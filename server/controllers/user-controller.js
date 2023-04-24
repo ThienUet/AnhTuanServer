@@ -3,6 +3,7 @@ const Bcrypt = require('bcryptjs');
 const {lowerCase} = require('lower-case');
 const Jwt = require('jsonwebtoken');
 const config = require('../config/config');
+const moment = require('moment');
 // encrypt password by Bcrypt
 const _hashPassword = async(password) => {
     const salt = await Bcrypt.genSalt();
@@ -14,15 +15,8 @@ const _hashPassword = async(password) => {
 const userLogin = (user) => {
     const tokenData = {
         id: user._id,
-        user_name: user.user_name,
         full_name: user.full_name,
-        email: user.email,
-        phone: user.phone,
-        address: user.address,
-        role: user.role,
-        birth_date: user.birth_date,
-        avatar: user.avatar,
-        banned: user.banned
+        role: user.role
     }
     return tokenData;
 }
@@ -35,7 +29,7 @@ const getToken = (tokenData) => {
 // Lấy danh sách người dùng có sẵn trong database.
 module.exports.getUserList = (req, res) => {
     try {
-        UserModel.find().then((user) => res.status(200).send({code: 1, message: "Lấy danh sách User thành công", data: user}).end()).catch((error) => res.status(404).send({code: 0, message: `Không lấy được danh sách người dùng`, error: error}).end());
+        UserModel.find().select('-password -user_name').then((user) => res.status(200).send({code: 1, message: "Lấy danh sách User thành công", data: user}).end()).catch((error) => res.status(404).send({code: 0, message: `Không lấy được danh sách người dùng`, error: error}).end());
     } catch (error) {
         return res.status(500).send({code: 0, message: `Không lấy được danh sách do lỗi: ${error}`}).end();
     }
@@ -44,7 +38,7 @@ module.exports.getUserList = (req, res) => {
 module.exports.getUserByID = (req, res) => {
     try {
         const id = req.userId;
-        UserModel.findOne({_id: id}).select('-password').then((user) => {
+        UserModel.findOne({_id: id}).select('-password -user_name').then((user) => {
             return res.status(200).send({code: 1, message: 'Lấy thông tin người dùng thành công', data: user}).end()
         }).catch((error) => res.status(404).send({code: 0, message: `Không lấy được người dùng`, error: error}).end());
     } catch (error) {
@@ -100,7 +94,7 @@ module.exports.createUser = async (req, res) => {
                         banned: false,
                         birth_date: data.birth_date,
                         created_at: Date.now(),
-                        created_by: email,
+                        created_by: data.created_by || '',
                     }
                     const userModel = new UserModel(user);
                     let result = await userModel.save();
@@ -118,9 +112,9 @@ module.exports.createUser = async (req, res) => {
 module.exports.login = (req, res) => {
     try {
         let user_name = req.body.user_name;
-            user_name = `${user_name.trim()}`;
+            user_name = `${user_name.toLowerCase().trim()}`;
         let password = req.body.password;
-            password = `${password.trim()}`;
+            password = `${password.toLowerCase().trim()}`;
             
         return UserModel.findOne({user_name: user_name}).then((user) => {
             if (!user) {
@@ -145,8 +139,38 @@ module.exports.login = (req, res) => {
                     });
                 }
             }  
+            
         }).catch((error) => res.status(401).send({code: 0, message: 'Xảy ra lỗi phía database', error: error}));
     } catch (error) {
         return res.status(403).send({code: 0, message: `Tài khoản hoăc mật khẩu không chính xác. !!`, error: error });
     }
 } 
+
+module.exports.updateUser = (req, res) => {
+    console.log(req.body);
+    try {
+        const id = req.userId;
+        const user = req.body;
+        const payload = {
+            updated_date: moment().locale('vi').format(),
+            updated_by: req.userId
+        }
+        if (user.first_name !== undefined) payload.first_name = user.first_name;
+        if (user.last_name !== undefined) payload.last_name = user.last_name;
+        payload.full_name = user.first_name + ' ' + user.last_name;
+        if (user.email !== undefined) payload.email = user.email;
+        if (user.phone !== undefined) payload.phone = user.phone;
+        if (user.address !== undefined) payload.address = user.address;
+        if (user.gender !== undefined) payload.gender = user.gender;
+        if (user.birth_date !== undefined) payload.birth_date = user.birth_date;
+        UserModel.updateOne({_id: id}, {$set: payload}).then((user) => {
+            if (user) {
+                return res.status(200).send({code: 1, data: user, message: 'Cập nhật thành công !'});
+            } else {
+                return res.status(404).send({code: 0, message: 'Cập nhật thất bại !'})
+            }
+        })
+    } catch (error) {
+        return res.status(500).send({code: 0, message: 'Cập nhật thông tin thất bại', error: error});
+    }
+}
