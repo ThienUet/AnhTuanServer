@@ -1,6 +1,5 @@
 const Mongoose = require('mongoose');
 const Schema = Mongoose.Schema;
-const ObjectId = require('mongodb').ObjectId;
 
 
 const ProductReview = Schema({
